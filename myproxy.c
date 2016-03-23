@@ -61,7 +61,7 @@ void *process_th(void * args){
 
 	while(1){
 		//receive http request
-		int result;
+		int result = 0;
 		int i = 0;
 		memset(request, 0, REQUEST_SIZE);
 		while((result = recv(browsersd, &request[i], sizeof(char), 0))) {
@@ -70,17 +70,15 @@ void *process_th(void * args){
 			}
 			i++;
 		}
-		request[i+1] = '\0';
 		if (result < 0){
 			close(browsersd);
 			perror("Received fail!\n");
 			pthread_exit(NULL);
 		}
-		result = i;
 		//print http request
 		printf("RECEIVED HTTP REQUEST: \n");
 		if(strlen(request)!=0)printf("%s\n",request);
-		printf("Receive requests...(%d Bytes)\n", result);
+		printf("Receive requests...(%d Bytes)\n", (int)strlen(request));
 
 		memset(req_copy, 0, REQUEST_SIZE);
     	strcpy(req_copy, request);
@@ -113,7 +111,7 @@ void *process_th(void * args){
         char ** lines = splitString(request, 0);
 
         int n = 0;
-        while(lines[i] != NULL){
+        while(lines[n] != NULL){
             //get the first line of http request, get the request url
             if (n == 0){
                 firstLine = splitString(lines[n], 1);
@@ -158,94 +156,170 @@ void *process_th(void * args){
         }
         printf("host address: %s\n", hostname);
 
-		/**
-		char *req_start;
-		char *req_next;
-		char *req_end;
-		char *content_len;
-		char *content_len_last;
+        /**int existCache = 0;
+        char filename[23];
+        strncpy(filename, crypt(url, "$1$00$")+6, 23);
+        for (i=0; i<22; ++i){
+            if (filename[i] == '/'){
+                filename[i] = '_';
+            }
+        }
+        struct stat st = {0};
+        if (stat("./proxyFiles", &st) == -1){
+            mkdir("./proxyFiles", 0777);
+        }
+        char partOne[] = "./proxyFiles/";
+        char *dirName;
+        dirName = malloc((strlen(partOne)+ strlen(filename))* sizeof(char));
+        dirName = strcat(partOne, filename);
+        if (stat(dirName, &st) == -1){
+            existCache = 0;
+        }else{
+            existCache = 1;
+        }**/
 
-		//find host address
-    	req_start = strstr(request,"Host:");
-		req_next = req_start + 6;
-		req_end = strstr(req_start,"\r\n");
-		int size = (int)req_end - (int)req_next;
-		printf("host address len: %d\n", size);
-		char t[256];
-		strncpy(t,req_next,size);
-		t[size]='\0';
-		printf("host address: %s\n", t);
+   		// the request have already cached on the proxy
+        /**int send_ims = 0, change_ims = 0;
+        if(existCache == 1 && supportedFileType == 1){
+            printf("web object is cached in proxy!\n");
+            if(haveIMS == 0 && haveCache == 0){
+                // send back the web object.
+                // find the cached object, find out its size
+                printf("Case 1\n");
+                struct stat st = {0};
+                if (stat(dirName, &st) == -1){
+                    printf("file not exist on cache!\n");
+                } else {
+                    char block[512];
+                    FILE *fp = fopen(dirName, "rb");
+                    int readSize = 0;
+                    do {
+                        memset(block, 0, 512);
+                        readSize = fread(block, sizeof(char), 512, fp);
+                        if(!(readSize<=0))
+                            send(browsersd, block, readSize, MSG_NOSIGNAL);
+                    }while(readSize > 0);
+                    fclose(fp);
+                }
+                continue;
 
-		//get host address from domain name
-		int status;
+            }
+            if(haveIMS == 1 && haveCache == 0){
+                printf("Case 2\n");
+                //bool checkNeedModified = compareName(dirName, IMS);
+                bool checkNeedModified = false;
+                if (checkNeedModified == true){
+                    char block[512];
+                    FILE *fp = fopen(dirName, "rb");
+                    int readSize = 0;
+                    do {
+                        memset(block, 0, 512);
+                        readSize = fread(block, sizeof(char), 512, fp);
+                        if(!(readSize<=0))
+                            send(browser_sd, block, readSize, MSG_NOSIGNAL);
+                    }while(readSize > 0);
+                    fclose(fp);
+                }else{
+                    char responseHeader[256] = "HTTP/1.1 304 Not Modified\r\n\r\n";
+                    send(browser_sd, responseHeader, 256, MSG_NOSIGNAL);
+                    printf("finished sending 304 response!\n");
+                }
+                continue;            }
+            if(haveIMS == 0 && haveCache == 1){
+                send_ims = 1;
+                continue;
+            }
+            if(haveIMS == 1 && haveCache == 1){
+                change_ims = 1;
+                continue;
+            }
+        }else{
+            printf("no cache!\n");
+
+        }**/
+
+        //get host address from domain name
+        int status;
 		struct addrinfo hints;
-		struct addrinfo *servinfo; // 將指向結果
-		memset(&hints, 0, sizeof hints); // 確保 struct 為空
+		struct addrinfo *servinfo;
+		memset(&hints, 0, sizeof hints); 
 		hints.ai_family = AF_INET; 
 		hints.ai_socktype = SOCK_STREAM; 
-		if ((status = getaddrinfo(t, "80", &hints, &servinfo)) != 0) {
+		if ((status = getaddrinfo(hostname, "80", &hints, &servinfo)) != 0) {
   			fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
   			exit(1);
 		}
 
-		int len;
-		
 		//print host IP address
 		struct sockaddr_in *addr;
     	addr = (struct sockaddr_in *)servinfo->ai_addr; 
-		// printf("inet_ntoa(in_addr)sin = %s\n",inet_ntoa((struct in_addr)addr->sin_addr));
-		
-		int sd = socket(AF_INET,SOCK_STREAM,0);
-		if(connect(sd,(struct sockaddr *)addr,sizeof(struct sockaddr))<0){
-			printf("connection error: %s (Errno:%d)\n",strerror(errno),errno);
-			exit(0);
-		}
+		//printf("inet_ntoa(in_addr)sin = %s\n",inet_ntoa((struct in_addr)addr->sin_addr));
 
-		if((len = send(sd,request,strlen(request),0))<0){
-			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
-			exit(0);
-		}
-		printf("len of request sending to server: %d\n", len);
+        int serversd = socket(AF_INET,SOCK_STREAM,0);
+        if(connect(serversd,(struct sockaddr *)addr,sizeof(struct sockaddr))<0){
+            printf("connection error: %s (Errno:%d)\n",strerror(errno),errno);
+            exit(0);
+        }
 
-		char buff[16000] ="";
-		int a =0;
-		while(1){
-			recv(sd, buff + a, sizeof(char), 0);
-			a++;
-			//printf("%s\n",request);
-			if (strstr(buff, "\r\n\r\n") != NULL){
-				break;
-			}
-		}
-		content_len = strstr(buff,"Content-Length");
-		content_len_last = strstr(content_len, "\r\n");
-		content_len = content_len + 16;
-		char value[10];
-		memcpy(value, content_len, (int)(content_len_last - content_len));
-		value[(int)(content_len_last - content_len)] = '\0';
-		int count = atoi(value);
-		printf("content len: %d\n", count);
-		while(1){
-			recv(sd, buff + a, sizeof(char), 0);
-			a++;
-			count--;
-			if (count == 0){
-				break;
-			}
-		}
-		buff[a] = '\0';
-		printf("RECEIVED INFO: \n");
-		if(strlen(buff)!=0)printf("%s\n",buff);
-		printf("len of response: %d\n", a);
+        memset(request, 0, REQUEST_SIZE);
+        strcpy(request, req_copy);
+        int res;
+        if((res = send(serversd,request,strlen(request),0))<0){
+            printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+            exit(0);
+        }
+        printf("len of request sending to server: %d\n", res);
+        memset(request, 0, REQUEST_SIZE);
+        result = 0;
+        i =0;
+        while((result = recv(serversd, &request[i], sizeof(char), 0))) {
+            if (i > 4 && strstr(request, "\r\n\r\n") != NULL){
+                break;
+            }
+            i++;
+        }
+        if (result < 0){
+            close(serversd);
+            close(browsersd);
+            perror("Received fail!\n");
+            pthread_exit(NULL);
+        }
+        printf("RECEIVED RESPONSE REQUEST: \n");
+        if(strlen(request)!=0)printf("%s\n",request);
+        printf("Receive response...(%d Bytes)\n", (int)strlen(request));
 
-		if((len = send(browsersd, buff,a,0))<0){
-			printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
-			exit(0);
-		}
-		printf("len of response sending to client: %d\n", len);
-		printf("sent\n");
-		close(sd);
-		freeaddrinfo(servinfo);**/
+        int a =0;
+        char *content_len;
+        char *content_len_last;
+        content_len = strstr(request,"Content-Length");
+        content_len_last = strstr(content_len, "\r\n");
+        content_len = content_len + 16;
+        char value[10];
+        memcpy(value, content_len, (int)(content_len_last - content_len));
+        value[(int)(content_len_last - content_len)] = '\0';
+        int count = atoi(value);
+        printf("content len: %d\n", count);
+        char buff[count];
+        res = 0;
+        res = recv(serversd, buff, count, 0);
+        buff[count] = '\0';
+        printf("RECEIVED INFO: \n");
+        if(strlen(request)!=0)printf("%s\n",buff);
+        printf("len of response: %d\n", (int)strlen(buff));
+
+        res = 0;
+        if((res = send(browsersd, request,strlen(request),0))<0){
+            printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+            exit(0);
+        }
+        if((res += send(browsersd, buff,count,0))<0){
+            printf("Send Error: %s (Errno:%d)\n",strerror(errno),errno);
+            exit(0);
+        }
+        printf("len of response sending to client: %d\n", res);
+        printf("sent\n");
+        close(serversd);
+        freeaddrinfo(servinfo);
     	printf("Connection closed\n");
 	}
     close(browsersd);
